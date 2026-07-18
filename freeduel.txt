@@ -1,5 +1,5 @@
-local KEY_API = "https://morning-bird-b01e.na4coomet.workers.dev"
-local KEY_LINK = "https://linkvertise.com/7515066/epi7cBhyqeyM?o=sharing"
+local KEY_API = "https://narcoapikey.na4coomet.workers.dev"
+local KEY_LINK = "https://link-target.net/7515066/epi7cBhyqeyM"
 
 local function startNovuHub()
 local NovuHub = Instance.new("ScreenGui")
@@ -3046,7 +3046,7 @@ local function requestKeyStatus(key)
         return false, nil, "Geçersiz API yanıtı."
     end
 
-    if data.valid == true or data.ok == true then
+    if data.valid == true then
         return true, tonumber(data.expiresAt), nil
     end
     return false, tonumber(data.expiresAt), tostring(data.error or data.message or "Key geçersiz.")
