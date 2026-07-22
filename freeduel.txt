@@ -1,5 +1,5 @@
 local KEY_API = "https://narcoapikey.na4coomet.workers.dev"
-local KEY_LINK = "https://link-target.net/7515066/epi7cBhyqeyM"
+local KEY_LINK = "https://linkvertise.com/7515066/epi7cBhyqeyM?o=sharing"
 
 local function startNovuHub()
 local NovuHub = Instance.new("ScreenGui")
@@ -3033,88 +3033,21 @@ local function loadCachedKey()
     return result
 end
 
-local function normalizeExpiry(data)
-    local nowMs = DateTime.now().UnixTimestampMillis
-
-    -- API expires_at değerini saniye veya milisaniye olarak gönderebilir.
-    local expires = tonumber(data.expires_at or data.expiresAt)
-    if expires then
-        if expires < 100000000000 then
-            expires = expires * 1000
-        end
-        return expires
-    end
-
-    -- Bazı API sürümleri yalnızca kalan süreyi saniye olarak gönderir.
-    local remaining = tonumber(data.remaining_time or data.remainingTime)
-    if remaining and remaining > 0 then
-        return nowMs + (remaining * 1000)
-    end
-
-    -- Sunucudan süre gelmezse doğrulanan key bu cihazda 24 saat saklanır.
-    return nowMs + (24 * 60 * 60 * 1000)
-end
-
 local function requestKeyStatus(key)
-    key = trim(key)
+    local cleanKey = trim(tostring(key or "")):upper()
 
-    local requestFunction =
-        request or
-        http_request or
-        (syn and syn.request) or
-        (http and http.request)
-
-    -- Önce yeni Worker API biçimini dene.
-    if requestFunction then
-        local ok, response = pcall(function()
-            return requestFunction({
-                Url = KEY_API .. "/api/roblox-verify",
-                Method = "POST",
-                Headers = {
-                    ["Content-Type"] = "application/json",
-                    ["Accept"] = "application/json"
-                },
-                Body = HttpService:JSONEncode({
-                    key = key
-                })
-            })
-        end)
-
-        if ok and response then
-            local body = response.Body or response.body or ""
-            local decodedOk, data = pcall(function()
-                return HttpService:JSONDecode(body)
-            end)
-
-            if decodedOk and type(data) == "table" then
-                if data.success == true or data.valid == true then
-                    return true, normalizeExpiry(data), nil
-                end
-
-                local reason = tostring(
-                    data.error or
-                    data.message or
-                    data.reason or
-                    "Key geçersiz."
-                )
-
-                -- Endpoint gerçekten bulunduysa eski API'ye düşmeden hatayı göster.
-                local status = tonumber(response.StatusCode or response.Status)
-                if status and status ~= 404 and status ~= 405 then
-                    return false, normalizeExpiry(data), reason
-                end
-            end
-        end
+    if cleanKey == "" then
+        return false, nil, "Key boş."
     end
 
-    -- Eski Worker sürümleriyle de uyumlu kal.
     local ok, response = pcall(function()
         return game:HttpGet(
-            KEY_API .. "/verify?key=" .. HttpService:UrlEncode(key)
+            KEY_API .. "/verify?key=" ..
+            HttpService:UrlEncode(cleanKey)
         )
     end)
 
-    if not ok then
+    if not ok or type(response) ~= "string" then
         return false, nil, "API bağlantı hatası."
     end
 
@@ -3126,30 +3059,27 @@ local function requestKeyStatus(key)
         return false, nil, "Geçersiz API yanıtı."
     end
 
-    if data.valid == true or data.success == true then
-        return true, normalizeExpiry(data), nil
+    if data.valid == true then
+        return true, tonumber(data.expiresAt), nil
     end
 
-    return false, normalizeExpiry(data),
-        tostring(data.error or data.message or data.reason or "Key geçersiz.")
+    return false,
+        tonumber(data.expiresAt),
+        tostring(data.error or data.message or "Key geçersiz veya süresi dolmuş.")
 end
 
--- Aynı cihazda doğrulanan key 24 saat dolmadan API'ye tekrar sorulmaz.
--- Böylece VPN veya IP değişmesi key ekranını yeniden açmaz.
+-- Önceden kaydedilmiş keyi otomatik kontrol et.
 local cached = loadCachedKey()
 if cached then
     local nowMs = DateTime.now().UnixTimestampMillis
-
-    -- Önceki sürüm saniye olarak kaydetmişse milisaniyeye çevir.
-    if cached.expiresAt > 0 and cached.expiresAt < 100000000000 then
-        cached.expiresAt = cached.expiresAt * 1000
-    end
-
     if cached.expiresAt > nowMs then
-        startNovuHub()
-        return
+        local valid, expiresAt = requestKeyStatus(cached.key)
+        if valid then
+            saveCachedKey(cached.key, expiresAt or cached.expiresAt)
+            startNovuHub()
+            return
+        end
     end
-
     clearCachedKey()
 end
 
